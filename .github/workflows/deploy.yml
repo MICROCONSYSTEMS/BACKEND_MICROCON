@@ -1,0 +1,129 @@
+name: Build and Deploy Microcon Systems
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  ECR_REPO: microcon-systems
+
+jobs:
+  build:
+    name: 🔨 Build & Push to ECR
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_BUCKET_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_BUCKET_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | \
+          docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+      - name: Build and push Docker image to ECR
+        run: |
+          IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO"
+          docker buildx build --platform linux/amd64 \
+            -t $IMAGE_URI:latest \
+            --push .
+
+      - name: Cleanup old ECR images
+        run: |
+          aws ecr list-images \
+            --repository-name "$ECR_REPO" \
+            --region "$AWS_REGION" \
+            --filter tagStatus=TAGGED \
+            --query 'imageIds[?!(imageTag == `latest`)]' \
+            --output json > old_images.json
+
+          if [ $(jq length old_images.json) -gt 0 ]; then
+            aws ecr batch-delete-image \
+              --repository-name "$ECR_REPO" \
+              --region "$AWS_REGION" \
+              --image-ids file://old_images.json
+          fi
+
+          aws ecr list-images \
+            --repository-name "$ECR_REPO" \
+            --region "$AWS_REGION" \
+            --filter tagStatus=UNTAGGED \
+            --query 'imageIds[*]' \
+            --output json > untagged_images.json
+
+          if [ $(jq length untagged_images.json) -gt 0 ]; then
+            aws ecr batch-delete-image \
+              --repository-name "$ECR_REPO" \
+              --region "$AWS_REGION" \
+              --image-ids file://untagged_images.json
+          fi
+
+  deploy:
+    name: 🚀 Deploy on EC2 (Self-hosted)
+    needs: build
+    runs-on: self-hosted
+    env:
+      AWS_REGION: ${{ secrets.AWS_BUCKET_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      ECR_REPO: microcon-systems
+      IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_BUCKET_REGION }}.amazonaws.com/microcon-systems:latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_BUCKET_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Pull latest Docker image
+        run: |
+          docker pull $IMAGE_URI
+
+      - name: Stop and remove existing container
+        run: |
+          docker ps -q --filter "name=microcon" | grep -q . && docker stop microcon && docker rm microcon || echo "No container to stop"
+
+      - name: Create .env file from GitHub Secrets
+        run: |
+          echo "RAZORPAY_KEY_ID=${{ secrets.RAZORPAY_KEY_ID }}" >> .env
+          echo "RAZORPAY_KEY_SECRET=${{ secrets.RAZORPAY_KEY_SECRET }}" >> .env
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+          echo "AWS_BUCKET_REGION=${{ secrets.AWS_BUCKET_REGION }}" >> .env
+          echo "AWS_ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID }}" >> .env
+          echo "ECR_REPO=${{ secrets.ECR_REPO }}" >> .env
+          echo "EMAIL_USER=${{ secrets.EMAIL_USER }}" >> .env
+          echo "EMAIL_PASS=${{ secrets.EMAIL_PASS }}" >> .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+          echo "MONGO_CONNECTION_URL=${{ secrets.MONGO_CONNECTION_URL }}" >> .env
+          echo "PORT=${{ secrets.PORT }}" >> .env
+
+      - name: Run new container using .env
+        run: |
+          docker run -d \
+            --restart unless-stopped \
+            --env-file .env \
+            -p 8000:8000 \
+            --name microcon \
+            $IMAGE_URI
