@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  ECR_REPO: microcon-systems
+  ECR_REPO: backend_microcon
 
 jobs:
   build:
@@ -82,8 +82,8 @@ jobs:
     env:
       AWS_REGION: ${{ secrets.AWS_BUCKET_REGION }}
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-      ECR_REPO: microcon-systems
-      IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_BUCKET_REGION }}.amazonaws.com/microcon-systems-online:latest
+      ECR_REPO: backend_microcon
+      IMAGE_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_BUCKET_REGION }}.amazonaws.com/backend_microcon:latest
 
     steps:
       - name: Configure AWS credentials
