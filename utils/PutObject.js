@@ -7,7 +7,7 @@ export const PutObject = async ({ folderName, fileName, fileBuffer, contentType 
         const key = `${folderName}/${fileName}`;
 
         const command = new PutObjectCommand({
-            Bucket: 'microcon-systems',
+            Bucket: 'microcon-systems-online',
             Key: key,
             Body: fileBuffer,
             ContentType: contentType || 'application/octet-stream'
@@ -16,7 +16,7 @@ export const PutObject = async ({ folderName, fileName, fileBuffer, contentType 
         await s3Client.send(command);
 
         const url = await getSignedUrl(s3Client, new GetObjectCommand({
-            Bucket: 'microcon-systems',
+            Bucket: 'microcon-systems-online',
             Key: key
         }));
 

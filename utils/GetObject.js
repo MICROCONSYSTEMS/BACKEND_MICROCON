@@ -7,7 +7,7 @@ export const GetObjectURL = async (key) => {
     if (!key) throw new Error("No S3 key provided");
 
     const command = new GetObjectCommand({
-      Bucket: "microcon-systems",
+      Bucket: "microcon-systems-online",
       Key: key,
     });
 

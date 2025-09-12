@@ -8,7 +8,7 @@ export const DeleteObject = async (key) => {
     }
 
     const command = new DeleteObjectCommand({
-      Bucket: 'microcon-systems',
+      Bucket: 'microcon-systems-online',
       Key: key
     });
 

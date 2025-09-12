@@ -16,7 +16,7 @@ export const DeleteAdmin = async (req, res) => {
 
     if (admin.profile_picture?.filename) {
       const deleteParams = {
-        Bucket: "microcon-systems", 
+        Bucket: "microcon-systems-online", 
         Key: `users/${admin.profile_picture.filename}`,
       };
       await s3Client.send(new DeleteObjectCommand(deleteParams));
